@@ -24,19 +24,27 @@ class ForecastingInput(models.Model):
                     tmp.close()
                     df = pd.read_csv(tmp.name)
 
-                # Minimal Prophet forecasting
-                df.columns = ['ds', 'y']  # Rename if your CSV uses different headers
-                df['ds'] = pd.to_datetime(df['ds'])
+                # Automatically detect columns
+                date_cols = [col for col in df.columns if 'date' in col.lower() or 'month' in col.lower() or 'year' in col.lower()]
+                value_cols = [col for col in df.select_dtypes(include=['number']).columns if col.lower() not in ['year', 'month', 'id']]
+
+                if not date_cols or not value_cols:
+                    rec.forecast_result = "Error: Couldn't detect a date or value column in the CSV."
+                    return
+
+                df = df[[date_cols[0], value_cols[0]]]
+                df.columns = ['ds', 'y']
+                df['ds'] = pd.to_datetime(df['ds'], errors='coerce')
+                df = df.dropna()
+
                 model = Prophet()
                 model.fit(df)
 
                 future = model.make_future_dataframe(periods=12, freq='M')
                 forecast = model.predict(future)
 
-                # Save the forecast output
                 rec.forecast_result = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().to_string()
 
-                # Plot and store the chart
                 fig = model.plot(forecast)
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_file:
                     fig.savefig(image_file.name)
