@@ -1,0 +1,37 @@
+<odoo>
+    <record id="view_forecasting_input_form" model="ir.ui.view">
+        <field name="name">forecasting.input.form</field>
+        <field name="model">forecasting.input</field>
+        <field name="arch" type="xml">
+            <form string="Forecasting Tool">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="csv_file" filename="name"/>
+                        <button name="run_forecast" string="Run Forecast" type="object" class="btn-primary"/>
+                        <field name="forecast_result" widget="text"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_forecasting_input_tree" model="ir.ui.view">
+        <field name="name">forecasting.input.tree</field>
+        <field name="model">forecasting.input</field>
+        <field name="arch" type="xml">
+            <tree string="Forecasting Inputs">
+                <field name="name"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_forecasting_input" model="ir.actions.act_window">
+        <field name="name">Forecasting Tool</field>
+        <field name="res_model">forecasting.input</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <menuitem id="menu_forecasting_root" name="Forecasting"/>
+    <menuitem id="menu_forecasting_tool" name="Forecasting Tool" parent="menu_forecasting_root" action="action_forecasting_input"/>
+</odoo>

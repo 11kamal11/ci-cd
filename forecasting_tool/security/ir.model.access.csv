@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_forecasting_input_user,forecasting.input user,model_forecasting_input,base.group_user,1,1,1,1
