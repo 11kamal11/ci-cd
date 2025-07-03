@@ -9,6 +9,7 @@
                     <group>
                         <field name="name"/>
                         <field name="csv_file" filename="name"/>
+                        <field name="forecast_result" widget="html" readonly="1"/>
                         <button name="run_forecast" string="Run Forecast" type="object" class="btn-primary"/>
                         <field name="forecast_result" widget="text"/>
                     </group>
