@@ -15,43 +15,50 @@ class ForecastingInput(models.Model):
     forecast_chart = fields.Binary('Forecast Chart', readonly=True, attachment=True)
 
     def run_forecast(self):
-        for rec in self:
-            if not rec.csv_file:
-                continue
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-                    tmp.write(base64.b64decode(rec.csv_file))
-                    tmp.close()
-                    df = pd.read_csv(tmp.name)
+    for rec in self:
+        rec.forecast_result = False
+        rec.forecast_chart = False
 
-                # Automatically detect columns
-                date_cols = [col for col in df.columns if 'date' in col.lower() or 'month' in col.lower() or 'year' in col.lower()]
-                value_cols = [col for col in df.select_dtypes(include=['number']).columns if col.lower() not in ['year', 'month', 'id']]
+        if not rec.csv_file:
+            rec.forecast_result = "No CSV file uploaded."
+            return
 
-                if not date_cols or not value_cols:
-                    rec.forecast_result = "Error: Couldn't detect a date or value column in the CSV."
-                    return
+        try:
+            # Save uploaded binary CSV file to a temp location
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+                tmp.write(base64.b64decode(rec.csv_file))
+                tmp.close()
+                df = pd.read_csv(tmp.name)
 
-                df = df[[date_cols[0], value_cols[0]]]
-                df.columns = ['ds', 'y']
-                df['ds'] = pd.to_datetime(df['ds'], errors='coerce')
-                df = df.dropna()
+            # Ensure proper column names
+            df.columns = ['ds', 'y']
+            df['ds'] = pd.to_datetime(df['ds'])
+            df['y'] = pd.to_numeric(df['y'], errors='coerce')
 
-                model = Prophet()
-                model.fit(df)
+            df = df.dropna()
+            if df.empty:
+                rec.forecast_result = "Uploaded file has no valid data after cleaning."
+                return
 
-                future = model.make_future_dataframe(periods=12, freq='M')
-                forecast = model.predict(future)
+            # Run Prophet
+            model = Prophet()
+            model.fit(df)
 
-                rec.forecast_result = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().to_string()
+            future = model.make_future_dataframe(periods=12, freq='M')
+            forecast = model.predict(future)
 
-                fig = model.plot(forecast)
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_file:
-                    fig.savefig(image_file.name)
-                    image_file.seek(0)
-                    rec.forecast_chart = base64.b64encode(image_file.read())
+            # Save results
+            rec.forecast_result = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().to_string()
 
-                plt.close(fig)
+            # Save plot
+            fig = model.plot(forecast)
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_file:
+                fig.savefig(image_file.name)
+                image_file.seek(0)
+                rec.forecast_chart = base64.b64encode(image_file.read())
 
-            except Exception as e:
-                rec.forecast_result = f"Error during forecast: {str(e)}"
+            plt.close(fig)
+
+        except Exception as e:
+            rec.forecast_result = f"Error during forecast: {str(e)}"
+
