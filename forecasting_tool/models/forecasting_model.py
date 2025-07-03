@@ -20,65 +20,76 @@ class ForecastingInput(models.Model):
     pie_chart = fields.Binary('Pie Chart', readonly=True, attachment=True)
 
     def run_forecast(self):
-        for rec in self:
-            if not rec.csv_file:
-                rec.forecast_result = "No file uploaded."
+    for rec in self:
+        if not rec.csv_file:
+            continue
+        try:
+            # Read and decode CSV
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+                tmp.write(base64.b64decode(rec.csv_file))
+                tmp.close()
+                df = pd.read_csv(tmp.name)
+
+            # Try to auto-detect the date and numeric column
+            date_col = None
+            target_col = None
+            for col in df.columns:
+                try:
+                    if pd.to_datetime(df[col], errors='coerce').notnull().sum() > len(df) * 0.6:
+                        date_col = col
+                        break
+                except Exception:
+                    continue
+
+            for col in df.columns:
+                if df[col].dtype in ['int64', 'float64'] and col != date_col:
+                    target_col = col
+                    break
+
+            if not date_col or not target_col:
+                rec.forecast_result = "Error: Could not detect date and target numeric column."
                 continue
-            try:
-                # Read and decode CSV
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-                    tmp.write(base64.b64decode(rec.csv_file))
-                    tmp.close()
-                    df = pd.read_csv(tmp.name)
 
-                # ✅ Use only first two columns and rename
-                if df.shape[1] < 2:
-                    raise ValueError("CSV must contain at least 2 columns (date and value).")
-                df = df.iloc[:, :2]
-                df.columns = ['ds', 'y']
-                df['ds'] = pd.to_datetime(df['ds'])
+            df = df[[date_col, target_col]]
+            df.columns = ['ds', 'y']
+            df['ds'] = pd.to_datetime(df['ds'])
 
-                # Prophet Forecast
-                model = Prophet()
-                model.fit(df)
-                future = model.make_future_dataframe(periods=12, freq='M')
-                forecast = model.predict(future)
+            # Prophet Forecast
+            model = Prophet()
+            model.fit(df)
+            future = model.make_future_dataframe(periods=12, freq='M')
+            forecast = model.predict(future)
 
-                rec.forecast_result = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().to_string()
+            rec.forecast_result = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().to_string()
 
-                # Forecast Line Chart
-                fig1 = model.plot(forecast)
-                rec.forecast_chart = self._save_figure_as_binary(fig1)
-                plt.close(fig1)
+            # Forecast Line Chart
+            fig1 = model.plot(forecast)
+            rec.forecast_chart = self._save_figure_as_binary(fig1)
+            plt.close(fig1)
 
-                # Bar Chart
-                fig2, ax2 = plt.subplots()
-                ax2.bar(df['ds'].dt.strftime('%Y-%m'), df['y'], color='skyblue')
-                ax2.set_title('Bar Chart of Y values over Time')
-                ax2.tick_params(axis='x', rotation=90)
-                rec.bar_chart = self._save_figure_as_binary(fig2)
-                plt.close(fig2)
+            # Bar Chart
+            fig2, ax2 = plt.subplots()
+            ax2.bar(df['ds'].dt.strftime('%Y-%m'), df['y'], color='skyblue')
+            ax2.set_title('Bar Chart of Y values over Time')
+            ax2.tick_params(axis='x', rotation=90)
+            rec.bar_chart = self._save_figure_as_binary(fig2)
+            plt.close(fig2)
 
-                # Histogram
-                fig3, ax3 = plt.subplots()
-                ax3.hist(df['y'], bins=20, color='orange', edgecolor='black')
-                ax3.set_title('Histogram of Y values')
-                rec.histogram_chart = self._save_figure_as_binary(fig3)
-                plt.close(fig3)
+            # Histogram
+            fig3, ax3 = plt.subplots()
+            ax3.hist(df['y'], bins=20, color='orange', edgecolor='black')
+            ax3.set_title('Histogram of Y values')
+            rec.histogram_chart = self._save_figure_as_binary(fig3)
+            plt.close(fig3)
 
-                # Pie Chart (top 5 periods by total Y)
-                df_grouped = df.groupby(df['ds'].dt.strftime('%Y-%m'))['y'].sum().sort_values(ascending=False).head(5)
-                fig4, ax4 = plt.subplots()
-                ax4.pie(df_grouped.values, labels=df_grouped.index, autopct='%1.1f%%')
-                ax4.set_title('Top 5 Periods by Y (Pie Chart)')
-                rec.pie_chart = self._save_figure_as_binary(fig4)
-                plt.close(fig4)
+            # Pie Chart (top 5 periods)
+            df_grouped = df.groupby(df['ds'].dt.strftime('%Y-%m'))['y'].sum().sort_values(ascending=False).head(5)
+            fig4, ax4 = plt.subplots()
+            ax4.pie(df_grouped.values, labels=df_grouped.index, autopct='%1.1f%%')
+            ax4.set_title('Top 5 Periods by Y (Pie Chart)')
+            rec.pie_chart = self._save_figure_as_binary(fig4)
+            plt.close(fig4)
 
-            except Exception as e:
-                rec.forecast_result = f"Error during forecast: {str(e)}"
+        except Exception as e:
+            rec.forecast_result = f"Error during forecast: {str(e)}"
 
-    def _save_figure_as_binary(self, fig):
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as image_file:
-            fig.savefig(image_file.name)
-            image_file.seek(0)
-            return base64.b64encode(image_file.read())
