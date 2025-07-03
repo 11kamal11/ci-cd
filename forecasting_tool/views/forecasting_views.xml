@@ -3,7 +3,7 @@
         <field name="name">forecasting.input.form</field>
         <field name="model">forecasting.input</field>
         <field name="arch" type="xml">
-            <form string="Forecasting Tool">
+            <form string="Forecasting Input">
                 <sheet>
                     <group>
                         <field name="name"/>
