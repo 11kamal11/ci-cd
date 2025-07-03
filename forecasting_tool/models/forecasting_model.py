@@ -53,5 +53,9 @@ class ForecastingInput(models.Model):
                 output = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(6)
                 rec.forecast_result = "Forecast:\n" + output.to_string(index=False)
 
-            except Exception as e:
-                rec.forecast_result = f"Error occurred:\n{str(e)}\n{traceback.format_exc()}"
+        except Exception as e:
+    rec.forecast_result = f"⚠️ Error:\n{type(e).__name__}: {e}\nCheck Odoo logs for details."
+    # Optionally, send to logs:
+    _logger = logging.getLogger(__name__)
+    _logger.error("Error in run_forecast()", exc_info=True)
+
