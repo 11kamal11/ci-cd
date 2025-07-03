@@ -22,6 +22,7 @@ class ForecastingInput(models.Model):
     def run_forecast(self):
         for rec in self:
             if not rec.csv_file:
+                rec.forecast_result = "No file uploaded."
                 continue
             try:
                 # Read and decode CSV
@@ -30,6 +31,10 @@ class ForecastingInput(models.Model):
                     tmp.close()
                     df = pd.read_csv(tmp.name)
 
+                # ✅ Use only first two columns and rename
+                if df.shape[1] < 2:
+                    raise ValueError("CSV must contain at least 2 columns (date and value).")
+                df = df.iloc[:, :2]
                 df.columns = ['ds', 'y']
                 df['ds'] = pd.to_datetime(df['ds'])
 
@@ -61,7 +66,7 @@ class ForecastingInput(models.Model):
                 rec.histogram_chart = self._save_figure_as_binary(fig3)
                 plt.close(fig3)
 
-                # Pie Chart (top 5 summed periods)
+                # Pie Chart (top 5 periods by total Y)
                 df_grouped = df.groupby(df['ds'].dt.strftime('%Y-%m'))['y'].sum().sort_values(ascending=False).head(5)
                 fig4, ax4 = plt.subplots()
                 ax4.pie(df_grouped.values, labels=df_grouped.index, autopct='%1.1f%%')

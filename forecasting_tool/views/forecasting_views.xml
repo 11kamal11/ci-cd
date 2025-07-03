@@ -17,7 +17,7 @@
                         <field name="forecast_chart" widget="image" readonly="1"/>
                     </group>
 
-                    <group string="Additional Charts">
+                    <group string="Additional Charts" col="2">
                         <field name="bar_chart" widget="image" readonly="1"/>
                         <field name="histogram_chart" widget="image" readonly="1"/>
                         <field name="pie_chart" widget="image" readonly="1"/>
