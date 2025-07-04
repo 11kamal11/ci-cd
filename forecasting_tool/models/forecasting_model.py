@@ -68,11 +68,7 @@ class ForecastingInput(models.Model):
                 forecast = model.predict(future)
 
                 rec.forecast_result = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().to_string()
-                rec.forecast_result += "\n\nForecast completed successfully."
-
-                # Save the forecasted data to a CSV file
-                forecast_csv = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_csv(index=False)
-                rec.forecast_result += "\n\nForecast Data:\n" + forecast_csv
+                3
 
                 # Forecast chart
                 fig1 = model.plot(forecast)
