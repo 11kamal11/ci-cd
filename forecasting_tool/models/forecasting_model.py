@@ -81,8 +81,10 @@ class ForecastingInput(models.Model):
                 plt.close(fig1)
 
                 # Bar chart
-               fig2, ax2 = plt.subplots(figsize=(10, 5))
-                bars = ax2.bar(df['ds'].dt.strftime('%Y-%m'), df['y'], color='dodgerblue')
+               if not df.empty:
+                df_filtered = df.dropna(subset=['ds', 'y'])
+                fig2, ax2 = plt.subplots(figsize=(10, 5))
+                bars = ax2.bar(df_filtered['ds'].dt.strftime('%Y-%m'), df_filtered['y'], color='dodgerblue')
                 ax2.set_title('Monthly Sales Overview', fontsize=14, fontweight='bold')
                 ax2.set_xlabel('Month')
                 ax2.set_ylabel('Sales')
@@ -90,7 +92,8 @@ class ForecastingInput(models.Model):
                 ax2.grid(axis='y', linestyle='--', alpha=0.7)
                 for bar in bars:
                     yval = bar.get_height()
-                    ax2.text(bar.get_x() + bar.get_width()/2.0, yval + 1, f'{yval:.0f}', ha='center', va='bottom', fontsize=8)
+                    if pd.notnull(yval):
+                        ax2.text(bar.get_x() + bar.get_width()/2.0, yval + 1, f'{yval:.0f}', ha='center', va='bottom', fontsize=8)
                 rec.bar_chart = self._save_figure_as_binary(fig2)
                 plt.close(fig2)
 
@@ -108,12 +111,14 @@ class ForecastingInput(models.Model):
 
                 # Pie chart
                 df_grouped = df.groupby(df['ds'].dt.strftime('%Y-%m'))['y'].sum().sort_values(ascending=False).head(5)
+                if not df_grouped.empty:
                 fig4, ax4 = plt.subplots()
                 colors = plt.cm.Paired.colors
                 ax4.pie(df_grouped.values, labels=df_grouped.index, autopct='%1.1f%%', startangle=140, colors=colors)
                 ax4.set_title('Top 5 Sales Months (Pie Chart)', fontsize=14, fontweight='bold')
                 rec.pie_chart = self._save_figure_as_binary(fig4)
                 plt.close(fig4)
+
 
 
                except Exception as e:
