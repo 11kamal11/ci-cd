@@ -1,22 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Form View -->
+    <record id="view_forecasting_input_kanban" model="ir.ui.view">
+        <field name="name">forecasting.input.kanban</field>
+        <field name="model">forecasting.input</field>
+        <field name="arch" type="xml">
+            <kanban>
+                <field name="name"/>
+                <field name="period"/>
+                <field name="forecast_result"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card">
+                            <div><strong>Name:</strong> <field name="name"/></div>
+                            <div><strong>Period:</strong> <field name="period"/></div>
+                            <div><strong>Result:</strong> <field name="forecast_result"/></div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
     <record id="view_forecasting_input_form" model="ir.ui.view">
         <field name="name">forecasting.input.form</field>
         <field name="model">forecasting.input</field>
         <field name="arch" type="xml">
-            <form string="Forecasting Input">
+            <form string="Sales Forecast Input">
                 <sheet>
                     <group>
                         <field name="name"/>
-                        <field name="csv_file" filename="name"/>
-                        <button name="run_forecast" string="Run Forecast" type="object" class="btn-primary"/>
+                        <field name="period"/>
+                        <field name="csv_file" widget="binary" accept=".csv" filename="name"/>
+                        <button name="run_forecast" string="Run Forecast" type="object" class="oe_stat_button" icon="fa-play"/>
                     </group>
-
                     <group string="Forecast Output">
                         <field name="forecast_result" widget="text" readonly="1"/>
                         <field name="forecast_chart" widget="image" readonly="1"/>
                     </group>
-
                     <group string="Additional Charts" col="2">
                         <field name="bar_chart" widget="image" readonly="1"/>
                         <field name="histogram_chart" widget="image" readonly="1"/>
@@ -27,17 +47,16 @@
         </field>
     </record>
 
-    <!-- Action -->
-    <record id="action_forecasting_input_form_only" model="ir.actions.act_window">
-        <field name="name">Forecasting Tool</field>
+    <record id="action_forecasting_input" model="ir.actions.act_window">
+        <field name="name">Sales Forecast Inputs</field>
         <field name="res_model">forecasting.input</field>
-        <field name="view_mode">form</field>
+        <field name="view_mode">kanban,form</field>
         <field name="target">current</field>
     </record>
 
-    <!-- Menu -->
     <menuitem id="menu_forecasting_root" name="Forecasting"/>
-    <menuitem id="menu_forecasting_tool" name="Forecasting Tool"
+    <menuitem id="menu_forecasting_tool" name="Sales Forecast Inputs"
               parent="menu_forecasting_root"
-              action="action_forecasting_input_form_only"/>
+              action="action_forecasting_input"
+              sequence="10"/>
 </odoo>
