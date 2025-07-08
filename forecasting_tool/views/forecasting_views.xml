@@ -31,13 +31,13 @@
                         <button name="run_forecast" string="Run Forecast" type="object" class="oe_stat_button" icon="fa-play"/>
                     </group>
                     <group string="Forecast Output">
-                        <field name="forecast_result" widget="text" readonly="1" style="width: 100%; height: 150px;"/>
-                        <field name="forecast_chart" widget="image" readonly="1" style="max-width: 600px; max-height: 400px;"/>
+                        <field name="forecast_result" widget="text" readonly="1" class="oe_textarea" style="width: 100%; height: 150px;"/>
+                        <field name="forecast_chart" widget="image" readonly="1" class="oe_image" style="max-width: 600px; max-height: 400px; margin: 10px;"/>
                     </group>
                     <group string="Additional Charts" col="2">
-                        <field name="bar_chart" widget="image" readonly="1" style="max-width: 600px; max-height: 400px;"/>
-                        <field name="histogram_chart" widget="image" readonly="1" style="max-width: 600px; max-height: 400px;"/>
-                        <field name="pie_chart" widget="image" readonly="1" style="max-width: 600px; max-height: 400px;"/>
+                        <field name="bar_chart" widget="image" readonly="1" class="oe_image" style="max-width: 600px; max-height: 400px; margin: 10px;"/>
+                        <field name="histogram_chart" widget="image" readonly="1" class="oe_image" style="max-width: 600px; max-height: 400px; margin: 10px;"/>
+                        <field name="pie_chart" widget="image" readonly="1" class="oe_image" style="max-width: 600px; max-height: 400px; margin: 10px;"/>
                     </group>
                 </sheet>
             </form>

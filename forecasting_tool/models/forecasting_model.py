@@ -5,10 +5,22 @@ import pandas as pd
 import numpy as np
 from prophet import Prophet
 import matplotlib.pyplot as plt
-import seaborn as sns
 import logging
 import io
-from scipy import stats
+
+try:
+    import seaborn as sns
+    SEABORN_AVAILABLE = True
+except ImportError:
+    SEABORN_AVAILABLE = False
+    sns = None
+
+try:
+    from scipy import stats
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    stats = None
 
 _logger = logging.getLogger(__name__)
 
@@ -37,14 +49,16 @@ class ForecastingInput(models.Model):
                     if parsed.notnull().sum() > len(df) * 0.8:
                         _logger.info(f"Detected date column '{col}' with format '{fmt}'")
                         return col, fmt
-                except:
+                except Exception as e:
+                    _logger.debug(f"Failed to parse column '{col}' with format '{fmt}': {str(e)}")
                     continue
             try:
                 parsed = pd.to_datetime(df[col], errors='coerce')
                 if parsed.notnull().sum() > len(df) * 0.8:
                     _logger.info(f"Detected date column '{col}' via auto-parsing")
                     return col, None
-            except:
+            except Exception as e:
+                _logger.debug(f"Failed to auto-parse column '{col}': {str(e)}")
                 continue
         _logger.warning("No valid date column found")
         return None, None
@@ -109,7 +123,8 @@ class ForecastingInput(models.Model):
                 max_date = future['ds'].max().strftime('%Y-%m')
 
                 # Enhanced Forecast chart (line plot)
-                plt.style.use('seaborn')
+                if SEABORN_AVAILABLE:
+                    plt.style.use('seaborn')
                 fig1, ax1 = plt.subplots(figsize=(12, 6))
                 ax1.plot(df['ds'], df['y'], label='Historical Sales', color='#1f77b4', linewidth=2)
                 ax1.plot(future['ds'], forecast['yhat'], label='Forecast', color='#ff7f0e', linewidth=2)
@@ -126,7 +141,11 @@ class ForecastingInput(models.Model):
 
                 # Enhanced Bar chart
                 fig2, ax2 = plt.subplots(figsize=(12, 6))
-                bars = ax2.bar(df['ds'].dt.strftime('%Y-%m'), df['y'], color=sns.color_palette("Blues", len(df)))
+                if SEABORN_AVAILABLE:
+                    colors = sns.color_palette("Blues", len(df))
+                else:
+                    colors = ['#1f77b4'] * len(df)
+                bars = ax2.bar(df['ds'].dt.strftime('%Y-%m'), df['y'], color=colors)
                 for bar in bars:
                     height = bar.get_height()
                     ax2.text(bar.get_x() + bar.get_width() / 2, height, f'{int(height)}', ha='center', va='bottom', fontsize=10)
@@ -141,19 +160,20 @@ class ForecastingInput(models.Model):
 
                 # Enhanced Histogram
                 fig3, ax3 = plt.subplots(figsize=(12, 6))
-                # Calculate optimal bins using Freedman-Diaconis rule
-                iqr = np.percentile(df['y'], 75) - np.percentile(df['y'], 25)
-                bin_width = 2 * iqr * len(df['y']) ** (-1/3)
-                bins = int((df['y'].max() - df['y'].min()) / bin_width) if bin_width > 0 else 20
-                ax3.hist(df['y'], bins=bins, color='#ff7f0e', edgecolor='black', alpha=0.7)
-                # Add kernel density plot
-                kde = stats.gaussian_kde(df['y'])
-                x_range = np.linspace(df['y'].min(), df['y'].max(), 100)
-                ax3.plot(x_range, kde(x_range) * len(df['y']) * bin_width, color='#1f77b4', linewidth=2, label='Density')
+                if SCIPY_AVAILABLE and len(df['y']) > 1:
+                    iqr = np.percentile(df['y'], 75) - np.percentile(df['y'], 25)
+                    bin_width = 2 * iqr * len(df['y']) ** (-1/3) if iqr > 0 else (df['y'].max() - df['y'].min()) / 20
+                    bins = int((df['y'].max() - df['y'].min()) / bin_width) if bin_width > 0 else 20
+                    ax3.hist(df['y'], bins=bins, color='#ff7f0e', edgecolor='black', alpha=0.7)
+                    kde = stats.gaussian_kde(df['y'])
+                    x_range = np.linspace(df['y'].min(), df['y'].max(), 100)
+                    ax3.plot(x_range, kde(x_range) * len(df['y']) * bin_width, color='#1f77b4', linewidth=2, label='Density')
+                    ax3.legend(loc='upper right', fontsize=10)
+                else:
+                    ax3.hist(df['y'], bins=20, color='#ff7f0e', edgecolor='black', alpha=0.7)
                 ax3.set_title('Sales Distribution', fontsize=14)
                 ax3.set_xlabel('Sales', fontsize=12)
                 ax3.set_ylabel('Frequency', fontsize=12)
-                ax3.legend(loc='upper right', fontsize=10)
                 ax3.grid(True, axis='y', linestyle='--', alpha=0.7)
                 plt.tight_layout()
                 rec.histogram_chart = self._save_figure_as_binary(fig3)
@@ -165,7 +185,10 @@ class ForecastingInput(models.Model):
                 if total > 0 and len(df_grouped) > 1:
                     percentages = (df_grouped / total * 100).round(1)
                     fig4, ax4 = plt.subplots(figsize=(10, 10))
-                    colors = sns.color_palette("Set2", len(df_grouped))
+                    if SEABORN_AVAILABLE:
+                        colors = sns.color_palette("Set2", len(df_grouped))
+                    else:
+                        colors = ['#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854']
                     wedges, texts, autotexts = ax4.pie(percentages, labels=df_grouped.index, autopct='%1.1f%%', colors=colors, startangle=90)
                     for text in autotexts:
                         text.set_fontsize(10)
