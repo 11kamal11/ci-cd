@@ -1,10 +1,12 @@
-from odoo import models, fields
+from odoo import models, fields, api
 import base64
 import tempfile
 import pandas as pd
+import numpy as np
 from prophet import Prophet
 import matplotlib.pyplot as plt
 import logging
+import io
 
 _logger = logging.getLogger(__name__)
 
@@ -12,7 +14,7 @@ class ForecastingInput(models.Model):
     _name = 'forecasting.input'
     _description = 'Forecast Input File'
 
-    name = fields.Char('Filename')
+    name = fields.Char('Filename', required=True)
     csv_file = fields.Binary('CSV File', required=True)
     forecast_result = fields.Text('Forecast Output', readonly=True)
     forecast_chart = fields.Binary('Forecast Chart', readonly=True, attachment=True)
@@ -20,7 +22,33 @@ class ForecastingInput(models.Model):
     histogram_chart = fields.Binary('Histogram Chart', readonly=True, attachment=True)
     pie_chart = fields.Binary('Pie Chart', readonly=True, attachment=True)
 
+    def _detect_date_column(self, df):
+        """Detect date column with multiple format attempts."""
+        date_formats = [
+            '%Y-%m-%d', '%Y/%m/%d', '%d/%m/%Y', '%d-%m-%Y', '%Y%m%d',
+            '%Y-%m', '%Y%m', '%m/%Y', '%b %Y', '%d %b %Y', '%Y'
+        ]
+        for col in df.columns:
+            for fmt in date_formats:
+                try:
+                    parsed = pd.to_datetime(df[col], format=fmt, errors='coerce')
+                    if parsed.notnull().sum() > len(df) * 0.8:
+                        _logger.info(f"Detected date column '{col}' with format '{fmt}'")
+                        return col, fmt
+                except:
+                    continue
+            try:
+                parsed = pd.to_datetime(df[col], errors='coerce')
+                if parsed.notnull().sum() > len(df) * 0.8:
+                    _logger.info(f"Detected date column '{col}' via auto-parsing")
+                    return col, None
+            except:
+                continue
+        _logger.warning("No valid date column found")
+        return None, None
+
     def run_forecast(self):
+        """Generate forecast and visualizations from uploaded CSV."""
         for rec in self:
             try:
                 if not rec.csv_file:
@@ -31,81 +59,108 @@ class ForecastingInput(models.Model):
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
                     tmp.write(base64.b64decode(rec.csv_file))
                     tmp.close()
-                    df = pd.read_csv(tmp.name)
+                    df = pd.read_csv(tmp.name, encoding='utf-8', sep=None, engine='python')
 
-                # Try to detect date and numeric columns
-                date_col = None
+                # Detect date and numeric columns
+                date_col, date_format = self._detect_date_column(df)
                 target_col = None
-
                 for col in df.columns:
-                    if pd.to_datetime(df[col], errors='coerce').notnull().sum() > len(df) * 0.6:
-                        date_col = col
-                        break
-
-                for col in df.columns:
-                    if col != date_col and pd.to_numeric(df[col], errors='coerce').notnull().sum() > len(df) * 0.6:
+                    if col != date_col and pd.to_numeric(df[col], errors='coerce').notnull().sum() > len(df) * 0.8:
                         target_col = col
                         break
 
                 if not date_col or not target_col:
-                    rec.forecast_result = "Unable to detect valid date and numeric column."
+                    rec.forecast_result = "Unable to detect valid date and numeric columns."
                     continue
 
+                # Preprocess data
                 df = df[[date_col, target_col]].dropna()
-                df.columns = ['ds', 'y']
-                df['ds'] = pd.to_datetime(df['ds'])
-                df['y'] = pd.to_numeric(df['y'], errors='coerce')
-
+                df[date_col] = pd.to_datetime(df[date_col], format=date_format, errors='coerce') if date_format else pd.to_datetime(df[date_col], errors='coerce')
+                df[target_col] = pd.to_numeric(df[target_col], errors='coerce')
                 df = df.dropna()
+
+                # Filter for 2023-2025 data
+                df = df[(df[date_col].dt.year >= 2023) & (df[date_col].dt.year <= 2025)]
                 if len(df) < 10:
-                    rec.forecast_result = "Not enough data after cleaning for forecasting."
+                    rec.forecast_result = "Not enough valid data points for 2023-2025."
                     continue
+
+                # Rename columns for Prophet
+                df = df.rename(columns={date_col: 'ds', target_col: 'y'})
 
                 # Prophet forecast
-                model = Prophet()
+                model = Prophet(
+                    yearly_seasonality=len(df) >= 12,
+                    weekly_seasonality=False,
+                    daily_seasonality=False,
+                    growth='linear'
+                )
                 model.fit(df)
                 future = model.make_future_dataframe(periods=12, freq='M')
                 forecast = model.predict(future)
 
-                rec.forecast_result = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail().to_string()
+                # Store forecast output (future predictions only)
+                future_forecast = forecast[forecast['ds'] > df['ds'].max()][['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+                future_forecast['ds'] = future_forecast['ds'].dt.strftime('%Y-%m-%d')
+                rec.forecast_result = future_forecast.to_string(index=False)
 
-                # Forecast chart
-                fig1 = model.plot(forecast)
+                # Forecast chart (line plot)
+                fig1, ax1 = plt.subplots(figsize=(10, 6))
+                ax1.plot(df['ds'], df['y'], label='Historical Sales', color='blue')
+                ax1.plot(future['ds'], forecast['yhat'], label='Forecast', color='red')
+                ax1.fill_between(future['ds'], forecast['yhat_lower'], forecast['yhat_upper'], color='red', alpha=0.2)
+                ax1.set_title('Sales Forecast (2023-2025)')
+                ax1.legend()
+                ax1.tick_params(axis='x', rotation=45)
+                plt.tight_layout()
                 rec.forecast_chart = self._save_figure_as_binary(fig1)
                 plt.close(fig1)
 
                 # Bar chart
-                fig2, ax2 = plt.subplots()
+                fig2, ax2 = plt.subplots(figsize=(10, 6))
                 ax2.bar(df['ds'].dt.strftime('%Y-%m'), df['y'], color='skyblue')
-                ax2.set_title('Bar Chart of Y over Time')
+                ax2.set_title('Sales Bar Chart (2023-2025)')
                 ax2.tick_params(axis='x', rotation=45)
+                plt.tight_layout()
                 rec.bar_chart = self._save_figure_as_binary(fig2)
                 plt.close(fig2)
 
                 # Histogram
-                fig3, ax3 = plt.subplots()
+                fig3, ax3 = plt.subplots(figsize=(10, 6))
                 ax3.hist(df['y'], bins=20, color='orange', edgecolor='black')
-                ax3.set_title('Histogram of Y')
+                ax3.set_title('Sales Distribution Histogram (2023-2025)')
+                plt.tight_layout()
                 rec.histogram_chart = self._save_figure_as_binary(fig3)
                 plt.close(fig3)
 
-                # Pie chart
+                # Pie chart (fixed to avoid 100% issue)
                 df_grouped = df.groupby(df['ds'].dt.strftime('%Y-%m'))['y'].sum().sort_values(ascending=False).head(5)
-                fig4, ax4 = plt.subplots()
-                ax4.pie(df_grouped.values, labels=df_grouped.index, autopct='%1.1f%%')
-                ax4.set_title('Top 5 Periods by Y')
-                rec.pie_chart = self._save_figure_as_binary(fig4)
-                plt.close(fig4)
+                total = df_grouped.sum()
+                if total > 0:
+                    percentages = (df_grouped / total * 100).round(1)
+                    fig4, ax4 = plt.subplots(figsize=(8, 8))
+                    ax4.pie(percentages, labels=df_grouped.index, autopct='%1.1f%%')
+                    ax4.set_title('Top 5 Periods by Sales (2023-2025)')
+                    plt.tight_layout()
+                    rec.pie_chart = self._save_figure_as_binary(fig4)
+                    plt.close(fig4)
+                else:
+                    rec.pie_chart = None
+                    rec.forecast_result += "\nNo valid data for pie chart."
 
             except Exception as e:
-                _logger.error("Forecast error: %s", str(e))
+                _logger.error(f"Forecast error: {str(e)}")
                 rec.forecast_result = f"Forecast error: {str(e)}"
 
     def _save_figure_as_binary(self, fig):
-        import io
-        buffer = io.BytesIO()
-        fig.savefig(buffer, format='png')
-        buffer.seek(0)
-        return base64.b64encode(buffer.read())
-
-# This method saves a matplotlib figure as a binary string for Odoo's attachment system.
+        """Save matplotlib figure as binary."""
+        try:
+            buffer = io.BytesIO()
+            fig.savefig(buffer, format='png', bbox_inches='tight')
+            buffer.seek(0)
+            return base64.b64encode(buffer.read()).decode('utf-8')
+        except Exception as e:
+            _logger.error(f"Error saving figure: {str(e)}")
+            return None
+        finally:
+            plt.close(fig)
