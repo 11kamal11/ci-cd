@@ -6,13 +6,11 @@
         <field name="arch" type="xml">
             <kanban>
                 <field name="name"/>
-                <field name="period"/>
                 <field name="forecast_result"/>
                 <templates>
                     <t t-name="kanban-box">
                         <div class="oe_kanban_card">
                             <div><strong>Name:</strong> <field name="name"/></div>
-                            <div><strong>Period:</strong> <field name="period"/></div>
                             <div><strong>Result:</strong> <field name="forecast_result"/></div>
                         </div>
                     </t>
@@ -29,18 +27,17 @@
                 <sheet>
                     <group>
                         <field name="name"/>
-                        <field name="period"/>
                         <field name="csv_file" widget="binary" accept=".csv" filename="name"/>
                         <button name="run_forecast" string="Run Forecast" type="object" class="oe_stat_button" icon="fa-play"/>
                     </group>
                     <group string="Forecast Output">
-                        <field name="forecast_result" widget="text" readonly="1"/>
-                        <field name="forecast_chart" widget="image" readonly="1"/>
+                        <field name="forecast_result" widget="text" readonly="1" style="width: 100%; height: 150px;"/>
+                        <field name="forecast_chart" widget="image" readonly="1" style="max-width: 600px; max-height: 400px;"/>
                     </group>
                     <group string="Additional Charts" col="2">
-                        <field name="bar_chart" widget="image" readonly="1"/>
-                        <field name="histogram_chart" widget="image" readonly="1"/>
-                        <field name="pie_chart" widget="image" readonly="1"/>
+                        <field name="bar_chart" widget="image" readonly="1" style="max-width: 600px; max-height: 400px;"/>
+                        <field name="histogram_chart" widget="image" readonly="1" style="max-width: 600px; max-height: 400px;"/>
+                        <field name="pie_chart" widget="image" readonly="1" style="max-width: 600px; max-height: 400px;"/>
                     </group>
                 </sheet>
             </form>

@@ -5,8 +5,10 @@ import pandas as pd
 import numpy as np
 from prophet import Prophet
 import matplotlib.pyplot as plt
+import seaborn as sns
 import logging
 import io
+from scipy import stats
 
 _logger = logging.getLogger(__name__)
 
@@ -48,7 +50,7 @@ class ForecastingInput(models.Model):
         return None, None
 
     def run_forecast(self):
-        """Generate forecast and visualizations from uploaded CSV."""
+        """Generate forecast and enhanced visualizations from uploaded CSV."""
         for rec in self:
             try:
                 if not rec.csv_file:
@@ -79,10 +81,8 @@ class ForecastingInput(models.Model):
                 df[target_col] = pd.to_numeric(df[target_col], errors='coerce')
                 df = df.dropna()
 
-                # Filter for 2023-2025 data
-                df = df[(df[date_col].dt.year >= 2023) & (df[date_col].dt.year <= 2025)]
                 if len(df) < 10:
-                    rec.forecast_result = "Not enough valid data points for 2023-2025."
+                    rec.forecast_result = "Not enough valid data points for forecasting."
                     continue
 
                 # Rename columns for Prophet
@@ -104,49 +104,79 @@ class ForecastingInput(models.Model):
                 future_forecast['ds'] = future_forecast['ds'].dt.strftime('%Y-%m-%d')
                 rec.forecast_result = future_forecast.to_string(index=False)
 
-                # Forecast chart (line plot)
-                fig1, ax1 = plt.subplots(figsize=(10, 6))
-                ax1.plot(df['ds'], df['y'], label='Historical Sales', color='blue')
-                ax1.plot(future['ds'], forecast['yhat'], label='Forecast', color='red')
-                ax1.fill_between(future['ds'], forecast['yhat_lower'], forecast['yhat_upper'], color='red', alpha=0.2)
-                ax1.set_title('Sales Forecast (2023-2025)')
-                ax1.legend()
+                # Dynamic date range for chart titles
+                min_date = df['ds'].min().strftime('%Y-%m')
+                max_date = future['ds'].max().strftime('%Y-%m')
+
+                # Enhanced Forecast chart (line plot)
+                plt.style.use('seaborn')
+                fig1, ax1 = plt.subplots(figsize=(12, 6))
+                ax1.plot(df['ds'], df['y'], label='Historical Sales', color='#1f77b4', linewidth=2)
+                ax1.plot(future['ds'], forecast['yhat'], label='Forecast', color='#ff7f0e', linewidth=2)
+                ax1.fill_between(future['ds'], forecast['yhat_lower'], forecast['yhat_upper'], color='#ff7f0e', alpha=0.2)
+                ax1.set_title(f'Sales Forecast ({min_date} to {max_date})', fontsize=14, pad=10)
+                ax1.set_xlabel('Date', fontsize=12)
+                ax1.set_ylabel('Sales', fontsize=12)
+                ax1.grid(True, linestyle='--', alpha=0.7)
+                ax1.legend(loc='upper left', fontsize=10)
                 ax1.tick_params(axis='x', rotation=45)
                 plt.tight_layout()
                 rec.forecast_chart = self._save_figure_as_binary(fig1)
                 plt.close(fig1)
 
-                # Bar chart
-                fig2, ax2 = plt.subplots(figsize=(10, 6))
-                ax2.bar(df['ds'].dt.strftime('%Y-%m'), df['y'], color='skyblue')
-                ax2.set_title('Sales Bar Chart (2023-2025)')
+                # Enhanced Bar chart
+                fig2, ax2 = plt.subplots(figsize=(12, 6))
+                bars = ax2.bar(df['ds'].dt.strftime('%Y-%m'), df['y'], color=sns.color_palette("Blues", len(df)))
+                for bar in bars:
+                    height = bar.get_height()
+                    ax2.text(bar.get_x() + bar.get_width() / 2, height, f'{int(height)}', ha='center', va='bottom', fontsize=10)
+                ax2.set_title(f'Sales by Month ({min_date} to {df["ds"].max().strftime("%Y-%m")})', fontsize=14)
+                ax2.set_xlabel('Date', fontsize=12)
+                ax2.set_ylabel('Sales', fontsize=12)
                 ax2.tick_params(axis='x', rotation=45)
+                ax2.grid(True, axis='y', linestyle='--', alpha=0.7)
                 plt.tight_layout()
                 rec.bar_chart = self._save_figure_as_binary(fig2)
                 plt.close(fig2)
 
-                # Histogram
-                fig3, ax3 = plt.subplots(figsize=(10, 6))
-                ax3.hist(df['y'], bins=20, color='orange', edgecolor='black')
-                ax3.set_title('Sales Distribution Histogram (2023-2025)')
+                # Enhanced Histogram
+                fig3, ax3 = plt.subplots(figsize=(12, 6))
+                # Calculate optimal bins using Freedman-Diaconis rule
+                iqr = np.percentile(df['y'], 75) - np.percentile(df['y'], 25)
+                bin_width = 2 * iqr * len(df['y']) ** (-1/3)
+                bins = int((df['y'].max() - df['y'].min()) / bin_width) if bin_width > 0 else 20
+                ax3.hist(df['y'], bins=bins, color='#ff7f0e', edgecolor='black', alpha=0.7)
+                # Add kernel density plot
+                kde = stats.gaussian_kde(df['y'])
+                x_range = np.linspace(df['y'].min(), df['y'].max(), 100)
+                ax3.plot(x_range, kde(x_range) * len(df['y']) * bin_width, color='#1f77b4', linewidth=2, label='Density')
+                ax3.set_title('Sales Distribution', fontsize=14)
+                ax3.set_xlabel('Sales', fontsize=12)
+                ax3.set_ylabel('Frequency', fontsize=12)
+                ax3.legend(loc='upper right', fontsize=10)
+                ax3.grid(True, axis='y', linestyle='--', alpha=0.7)
                 plt.tight_layout()
                 rec.histogram_chart = self._save_figure_as_binary(fig3)
                 plt.close(fig3)
 
-                # Pie chart (fixed to avoid 100% issue)
+                # Enhanced Pie chart (fixed 100% issue)
                 df_grouped = df.groupby(df['ds'].dt.strftime('%Y-%m'))['y'].sum().sort_values(ascending=False).head(5)
                 total = df_grouped.sum()
-                if total > 0:
+                if total > 0 and len(df_grouped) > 1:
                     percentages = (df_grouped / total * 100).round(1)
-                    fig4, ax4 = plt.subplots(figsize=(8, 8))
-                    ax4.pie(percentages, labels=df_grouped.index, autopct='%1.1f%%')
-                    ax4.set_title('Top 5 Periods by Sales (2023-2025)')
+                    fig4, ax4 = plt.subplots(figsize=(10, 10))
+                    colors = sns.color_palette("Set2", len(df_grouped))
+                    wedges, texts, autotexts = ax4.pie(percentages, labels=df_grouped.index, autopct='%1.1f%%', colors=colors, startangle=90)
+                    for text in autotexts:
+                        text.set_fontsize(10)
+                    ax4.legend(wedges, df_grouped.index, title="Periods", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1), fontsize=10)
+                    ax4.set_title('Top 5 Periods by Sales', fontsize=14)
                     plt.tight_layout()
                     rec.pie_chart = self._save_figure_as_binary(fig4)
                     plt.close(fig4)
                 else:
                     rec.pie_chart = None
-                    rec.forecast_result += "\nNo valid data for pie chart."
+                    rec.forecast_result += "\nInsufficient data for pie chart (need at least 2 periods with non-zero sales)."
 
             except Exception as e:
                 _logger.error(f"Forecast error: {str(e)}")
@@ -156,7 +186,7 @@ class ForecastingInput(models.Model):
         """Save matplotlib figure as binary."""
         try:
             buffer = io.BytesIO()
-            fig.savefig(buffer, format='png', bbox_inches='tight')
+            fig.savefig(buffer, format='png', bbox_inches='tight', dpi=100)
             buffer.seek(0)
             return base64.b64encode(buffer.read()).decode('utf-8')
         except Exception as e:
